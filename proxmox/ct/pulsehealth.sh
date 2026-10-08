@@ -50,5 +50,5 @@ echo -e "${INFO}${YW}Pulse still needs its .env. Configure and start it with:${C
 echo -e "${TAB}${BGN}pct exec ${CTID} -- pulse-setup${CL}"
 read -r -p "${TAB}Run it now? <Y/n> " prompt
 if [[ ! "${prompt,,}" =~ ^(n|no)$ ]]; then
-  pct exec "$CTID" -- pulse-setup
+  pct exec "$CTID" -- /opt/pulse/scripts/setup.sh
 fi

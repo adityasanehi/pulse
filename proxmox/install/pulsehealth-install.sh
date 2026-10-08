@@ -22,10 +22,18 @@ msg_info "Installing Tailscale"
 $STD bash -c "$(curl -fsSL https://tailscale.com/install.sh)"
 msg_ok "Installed Tailscale"
 
-# Clone the repo and branch these scripts came from: https://raw.githubusercontent.com/<owner>/<repo>/<branch>/proxmox
-IFS=/ read -r _ _ _ OWNER REPO BRANCH _ <<<"${COMMUNITY_SCRIPTS_URL:-}"
+# Clone the repo and branch these scripts came from: https://raw.githubusercontent.com/<owner>/<repo>/<branch>/proxmox.
+# Anything else (the engine's own default, when the variable doesn't reach the container) means the default repo.
+REPO=adityasanehi/pulse BRANCH=main
+if [[ "${COMMUNITY_SCRIPTS_URL:-}" =~ ^https://raw\.githubusercontent\.com/([^/]+/[^/]+)/([^/]+)/proxmox$ ]]; then
+  REPO=${BASH_REMATCH[1]} BRANCH=${BASH_REMATCH[2]}
+fi
 msg_info "Cloning Pulse"
-$STD git clone --branch "${BRANCH:-main}" "https://github.com/${OWNER:-adityasanehi}/${REPO:-pulse}.git" /opt/pulse
+$STD git clone --branch "$BRANCH" "https://github.com/${REPO}.git" /opt/pulse
+if [[ ! -x /opt/pulse/scripts/setup.sh ]]; then
+  msg_error "${REPO}@${BRANCH} has no scripts/setup.sh"
+  exit 1
+fi
 ln -sf /opt/pulse/scripts/setup.sh /usr/local/bin/pulse-setup
 msg_ok "Cloned Pulse to /opt/pulse"
 

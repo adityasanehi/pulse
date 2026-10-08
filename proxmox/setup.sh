@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# First-run setup on the machine that runs Pulse: asks for the .env values, generates the secrets, starts the
-# containers and, when Tailscale is installed, serves Pulse over HTTPS on your tailnet (docs/setup.md, steps 3, 5, 6).
+# First-run setup inside the Proxmox container made by ct/pulsehealth.sh: asks for the .env values, generates the
+# session secret, starts pulse.service and serves it over HTTPS on your tailnet (docs/setup.md, steps 3, 5 and 6).
 #
-#   scripts/setup.sh          # the Proxmox helper script installs it as `pulse-setup`
+#   pulse-setup               # or, from the Proxmox host: pct exec <id> -- /opt/pulse/proxmox/setup.sh
 #
 # Safe to run again: it offers the current values as defaults and keeps the existing secrets.
 set -euo pipefail
 umask 077
 
-[ "$(id -u)" = 0 ] || exec sudo "$0" "$@"
+[ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
 cd "$(dirname "$(readlink -f "$0")")/.."
 
 step() { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
@@ -31,8 +31,7 @@ ask() {
   printf -v "$1" '%s' "$reply"
 }
 
-docker info >/dev/null 2>&1 || die "Docker is not reachable (docs/setup.md, step 2)"
-[ -f .env ] || cp .env.example .env
+[ -f /etc/systemd/system/pulse.service ] && [ -f .env ] || die "no pulse.service or .env: install with proxmox/ct/pulsehealth.sh"
 
 HOST=
 if command -v tailscale >/dev/null; then
@@ -71,32 +70,30 @@ fi
 
 set_env DATA_SOURCE "$DATA_SOURCE"
 set_env APP_URL "$APP_URL"
-# Generated once and kept: Postgres stores its password in the volume on first start. Hex, because compose.yaml puts
-# it in DATABASE_URL, where base64's "/" and "+" would break the URL.
-[ -n "$(get POSTGRES_PASSWORD)" ] || set_env POSTGRES_PASSWORD "$(openssl rand -hex 24)"
 [ -n "$(get BETTER_AUTH_SECRET)" ] || set_env BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
 
-# Tailscale (or any tunnel or proxy on the host) reaches Pulse on a loopback-only port.
-if [ ! -f compose.override.yaml ]; then
-  cat > compose.override.yaml <<'EOF'
-services:
-  pulse:
-    ports:
-      - "127.0.0.1:3000:3000"
-EOF
+step "Starting Pulse"
+PORT=$(get PORT); PORT=${PORT:-3000}
+systemctl enable -q pulse
+systemctl restart pulse
+up=
+for _ in $(seq 30); do
+  if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/healthz" 2>/dev/null; then up=1; break; fi
+  sleep 2
+done
+if [ -z "$up" ]; then
+  journalctl -u pulse -n 30 --no-pager >&2
+  die "Pulse did not come up; fix what the log above names and run this again"
 fi
-
-step "Building and starting Pulse (the first build takes a few minutes)"
-docker compose up -d --build
 if [ -n "$HOST" ] && [ "$APP_URL" = "https://$HOST" ]; then
-  tailscale serve --bg 3000
+  tailscale serve --bg "$PORT"
 fi
 
-step "Pulse is starting at $APP_URL"
+step "Pulse is running at $APP_URL"
 if [ "$DATA_SOURCE" = google ]; then
   echo "Create your account right away with $ADMIN_EMAILS: whoever signs up with it first owns the server."
   echo "Then go through onboarding and Connect Google."
 else
   echo 'Open it and choose "Continue with demo data".'
 fi
-echo "Logs: docker compose logs -f pulse    Change a value: run this again"
+echo "Logs: journalctl -u pulse -f    Change a value: pulse-setup    Update: update"

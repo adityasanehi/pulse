@@ -42,7 +42,7 @@ function update_script() {
 
   # Migrations run at boot; a dump first means a bad one can be undone by hand. Kept: the last 10.
   msg_info "Backing up Postgres"
-  mkdir -p backups
+  install -d -m 700 backups
   runuser -u postgres -- pg_dump -Fc pulse >"backups/pre-update-$(date +%Y%m%d-%H%M%S).dump"
   ls -1t backups/pre-update-*.dump | tail -n +11 | xargs -r rm -f
   msg_ok "Backed up Postgres to /opt/pulse/backups"

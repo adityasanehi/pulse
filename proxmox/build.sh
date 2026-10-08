@@ -18,4 +18,6 @@ for s in reset-password.mjs:reset-password seed-demo-user.mts:seed-user; do
     --banner:js="import{createRequire}from'module';const require=createRequire(import.meta.url);" \
     --outfile="$out/scripts/${s##*:}.mjs"
 done
-chown -R pulse: "$out"
+# The service user owns only Next's cache; the code stays root-owned so a compromised app can't rewrite itself.
+mkdir -p "$out/.next/cache"
+chown -R pulse: "$out/.next/cache"

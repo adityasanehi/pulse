@@ -47,7 +47,7 @@ description
 msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
 echo -e "${INFO}${YW}Pulse still needs its .env. Configure and start it with:${CL}"
-echo -e "${TAB}${BGN}pct exec ${CTID} -- pulse-setup${CL}"
+echo -e "${TAB}${BGN}pct exec ${CTID} -- /opt/pulse/scripts/setup.sh${CL}"
 read -r -p "${TAB}Run it now? <Y/n> " prompt
 if [[ ! "${prompt,,}" =~ ^(n|no)$ ]]; then
   pct exec "$CTID" -- /opt/pulse/scripts/setup.sh

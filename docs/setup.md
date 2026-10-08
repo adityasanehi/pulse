@@ -29,19 +29,16 @@ your machine.
 You need a machine that stays on and that you can reach over SSH: a Raspberry Pi, a NAS, a home server or a cloud
 server. The commands below assume Debian or Ubuntu (`apt`).
 
-**On Proxmox?** One command in the Proxmox host's shell creates a Debian container that runs Pulse without Docker
-(Node, Postgres and a `pulse` systemd service, with Pulse in `/opt/pulse`), in the style of the
-[community-scripts](https://community-scripts.org) helper scripts. It then offers to run `pulse-setup`, which signs
-the container in to Tailscale, asks for the `.env` values and starts Pulse (steps 3, 5 and 6). Have the OAuth client
-from step 4 ready; `pulse-setup` shows the redirect URI to give it.
+**On Proxmox?** One command in the Proxmox host's shell creates a Debian container with Docker, Tailscale and
+Pulse in `/opt/pulse`, in the style of the [community-scripts](https://community-scripts.org) helper scripts. It
+then offers to run `pulse-setup`, which signs the container in to Tailscale, asks for the `.env` values and starts
+Pulse (steps 3, 5 and 6). Have the OAuth client from step 4 ready; `pulse-setup` shows the redirect URI to give it.
 
 ```sh
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/adityasanehi/pulse/main/proxmox/ct/pulsehealth.sh)"
 ```
 
-In that container the Docker commands in these docs don't apply: logs are `journalctl -u pulse`, `update` pulls,
-rebuilds and restarts Pulse after dumping the database to `/opt/pulse/backups`, and a password reset is
-`cd /opt/pulse/.next/standalone && node --env-file=/opt/pulse/.env scripts/reset-password.mjs <email-or-username>`.
+On any other server, do steps 2 and 3 by hand; `sudo scripts/setup.sh` then replaces steps 5 and 6.
 
 1. Connect to the server over SSH.
 2. Update it and install Git, curl and nano:

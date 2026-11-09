@@ -32,11 +32,18 @@ catch_errors
 
 function update_script() {
   header_info
+  check_container_storage
+  check_container_resources
   if [[ ! -d /opt/pulse ]]; then
     msg_error "No ${APP} Installation Found!"
     exit
   fi
-  cd /opt/pulse && scripts/deploy.sh
+  # deploy.sh pulls main, dumps Postgres, rebuilds and rolls back if the new build never turns healthy.
+  msg_info "Updating ${APP} (the rebuild takes a few minutes)"
+  cd /opt/pulse
+  $STD scripts/deploy.sh
+  msg_ok "Updated ${APP} to $(git log -1 --format='%h %s')"
+  msg_ok "Updated successfully!"
   exit
 }
 

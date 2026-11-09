@@ -38,6 +38,9 @@ Pulse (steps 3, 5 and 6). Have the OAuth client from step 4 ready; `pulse-setup`
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/adityasanehi/pulse/main/proxmox/ct/pulsehealth.sh)"
 ```
 
+To update it later, run `update` in the container's console (or the same command as above, inside the container).
+It backs up the database, pulls the latest `main` and rebuilds, rolling back if the new build doesn't start.
+
 On any other server, do steps 2 and 3 by hand; `sudo scripts/setup.sh` then replaces steps 5 and 6.
 
 1. Connect to the server over SSH.

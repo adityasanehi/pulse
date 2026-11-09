@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-# Runs inside the container created by ct/pulsehealth.sh: Docker, Tailscale and a Pulse checkout in /opt/pulse.
+# Runs inside the container created by ct/pulsehealth.sh: Docker, Tailscale, an upstream Pulse checkout in /opt/pulse
+# and pulse-setup.
 # License: PolyForm Noncommercial 1.0.0 | https://github.com/adityaongit/pulse/blob/main/LICENSE
 # Source: https://github.com/adityaongit/pulse
 
@@ -22,24 +23,16 @@ msg_info "Installing Tailscale"
 $STD bash -c "$(curl -fsSL https://tailscale.com/install.sh)"
 msg_ok "Installed Tailscale"
 
-# Clone the repo and branch these scripts came from: https://raw.githubusercontent.com/<owner>/<repo>/<branch>/proxmox.
-# The engine's own default (or nothing) reaching the container means the default repo; any other URL is an error, so
-# a fork never silently installs another repo's code.
-REPO=adityasanehi/pulse BRANCH=main
-if [[ "${COMMUNITY_SCRIPTS_URL:-}" =~ ^https://raw\.githubusercontent\.com/([^/]+/[^/]+)/([^/]+)/proxmox$ ]]; then
-  REPO=${BASH_REMATCH[1]} BRANCH=${BASH_REMATCH[2]}
-elif [[ -n "${COMMUNITY_SCRIPTS_URL:-}" && "$COMMUNITY_SCRIPTS_URL" != */community-scripts/* ]]; then
-  msg_error "Can't tell which repo to clone from COMMUNITY_SCRIPTS_URL=${COMMUNITY_SCRIPTS_URL}"
-  exit 1
-fi
-msg_info "Cloning ${REPO}@${BRANCH}"
-$STD git clone --branch "$BRANCH" "https://github.com/${REPO}.git" /opt/pulse
-if [[ ! -x /opt/pulse/scripts/setup.sh ]]; then
-  msg_error "${REPO}@${BRANCH} has no scripts/setup.sh"
-  exit 1
-fi
-ln -sf /opt/pulse/scripts/setup.sh /usr/local/bin/pulse-setup
-msg_ok "Cloned ${REPO}@${BRANCH} to /opt/pulse"
+# Pulse itself comes straight from upstream, so `update` gets its changes without syncing this fork. Only the
+# Proxmox scripts and pulse-setup live here, fetched from the repo and branch these scripts came from.
+msg_info "Cloning adityaongit/pulse"
+$STD git clone https://github.com/adityaongit/pulse.git /opt/pulse
+msg_ok "Cloned adityaongit/pulse to /opt/pulse"
+
+msg_info "Installing pulse-setup"
+curl -fsSL "${COMMUNITY_SCRIPTS_URL%/proxmox}/scripts/setup.sh" -o /usr/local/bin/pulse-setup
+chmod +x /usr/local/bin/pulse-setup
+msg_ok "Installed pulse-setup"
 
 motd_ssh
 customize

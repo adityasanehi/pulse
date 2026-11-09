@@ -38,9 +38,15 @@ function update_script() {
     msg_error "No ${APP} Installation Found!"
     exit
   fi
+  # Containers made before Pulse came from upstream still track this fork; move them over.
+  cd /opt/pulse
+  git remote set-url origin https://github.com/adityaongit/pulse.git
+  # Was a symlink into the fork checkout; writing through it would dirty the repo and stop deploy.sh.
+  rm -f /usr/local/bin/pulse-setup
+  curl -fsSL "${COMMUNITY_SCRIPTS_URL%/proxmox}/scripts/setup.sh" -o /usr/local/bin/pulse-setup
+  chmod +x /usr/local/bin/pulse-setup
   # deploy.sh pulls main, dumps Postgres, rebuilds and rolls back if the new build never turns healthy.
   msg_info "Updating ${APP} (the rebuild takes a few minutes)"
-  cd /opt/pulse
   $STD scripts/deploy.sh
   msg_ok "Updated ${APP} to $(git log -1 --format='%h %s')"
   msg_ok "Updated successfully!"
@@ -54,8 +60,8 @@ description
 msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
 echo -e "${INFO}${YW}Pulse still needs its .env. Configure and start it with:${CL}"
-echo -e "${TAB}${BGN}pct exec ${CTID} -- /opt/pulse/scripts/setup.sh${CL}"
+echo -e "${TAB}${BGN}pct exec ${CTID} -- pulse-setup${CL}"
 read -r -p "${TAB}Run it now? <Y/n> " prompt
 if [[ ! "${prompt,,}" =~ ^(n|no)$ ]]; then
-  pct exec "$CTID" -- /opt/pulse/scripts/setup.sh
+  pct exec "$CTID" -- /usr/local/bin/pulse-setup
 fi

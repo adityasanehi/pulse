@@ -2,14 +2,17 @@
 # First-run setup on the machine that runs Pulse: asks for the .env values, generates the secrets, starts the
 # containers and, when Tailscale is installed, serves Pulse over HTTPS on your tailnet (docs/setup.md, steps 3, 5, 6).
 #
-#   scripts/setup.sh          # the Proxmox helper script installs it as `pulse-setup`
+#   scripts/setup.sh          # the Proxmox helper script installs it as `pulse-setup`, for /opt/pulse
 #
 # Safe to run again: it offers the current values as defaults and keeps the existing secrets.
 set -euo pipefail
 umask 077
 
 [ "$(id -u)" = 0 ] || exec sudo "$0" "$@"
-cd "$(dirname "$(readlink -f "$0")")/.."
+# From a checkout, its own repo; installed as pulse-setup, the Proxmox container's /opt/pulse.
+repo="$(dirname "$(readlink -f "$0")")/.."
+[ -f "$repo/compose.yaml" ] || repo=/opt/pulse
+cd "$repo"
 
 step() { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
 die() { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }

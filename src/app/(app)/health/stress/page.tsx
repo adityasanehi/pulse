@@ -10,6 +10,7 @@ import { DetailShell } from "@/components/shells/DetailShell"
 import { EmptyState } from "@/components/shells/EmptyState"
 import { MetricState } from "@/components/shells/MetricState"
 import { SectionShell } from "@/components/shells/SectionShell"
+import { stressSeries } from "../../_lib/view"
 import { Skeleton } from "@/components/ui/skeleton"
 import { pageDay, type SearchParams } from "../../_lib/day"
 
@@ -41,9 +42,9 @@ const INFO = {
 }
 
 const LEVEL_KEYS = [
-  { key: "lowMin", word: "Low", bar: "bg-stress-low", text: "text-stress-low" },
-  { key: "mediumMin", word: "Medium", bar: "bg-stress-medium", text: "text-stress-medium" },
-  { key: "highMin", word: "High", bar: "bg-stress-high", text: "text-stress-high" },
+  { key: "lowMin", word: "Low", bar: "bg-stress-low", text: "text-stress-low-text" },
+  { key: "mediumMin", word: "Medium", bar: "bg-stress-medium", text: "text-stress-medium-text" },
+  { key: "highMin", word: "High", bar: "bg-stress-high", text: "text-stress-high-text" },
 ] as const
 
 function LevelBar({ m, className }: { m: { lowMin: number; mediumMin: number; highMin: number }; className: string }) {
@@ -96,7 +97,7 @@ function typicalLine(l: NonNullable<StressVM["levels"]["value"]>) {
 }
 
 export default async function StressPage({ searchParams }: PageProps<"/health/stress">) {
-  const { d, today, timeZone, ctx } = await pageDay(searchParams as SearchParams, "/health/stress")
+  const { d, today, timeZone, timeFormat, ctx } = await pageDay(searchParams as SearchParams, "/health/stress")
   const vm = await getStress(d, ctx)
   const g = vm.gauge
 
@@ -113,7 +114,7 @@ export default async function StressPage({ searchParams }: PageProps<"/health/st
           value={g.value?.value ?? null}
           reason={g.reason}
           provisional={g.provisional}
-          caption={g.value ? (g.value.dayAverage || !vm.isToday ? "Day average" : g.value.at ? `Last updated ${clock(g.value.at, timeZone)}` : undefined) : undefined}
+          caption={g.value ? (g.value.dayAverage || !vm.isToday ? "Day average" : g.value.at ? `Last updated ${clock(g.value.at, timeZone, timeFormat)}` : undefined) : undefined}
         />
         {g.reason === "no_data" && <p className="max-w-[36ch] text-center text-xs leading-4 font-medium text-muted-foreground">{EMPTY}</p>}
         </div>
@@ -121,21 +122,7 @@ export default async function StressPage({ searchParams }: PageProps<"/health/st
       insight={vm.insight && <InsightCard body={vm.insight} />}
       primary={
         <SectionShell variant="card" title={vm.isToday ? "Today" : dayLabel(d, today)} info={{ title: "Stress throughout the day", body: "Body activation during still minutes, from 0 to 3. Movement, workouts and sleep appear as excluded periods rather than stress scores." }}>
-          <StressChart
-            variant="full"
-            data={
-              vm.chart.value
-                ? {
-                    ...vm.chart,
-                    value: {
-                      points: vm.chart.value.points.map((p) => ({ t: p.t, value: p.v })),
-                      spans: vm.chart.value.spans.map((s) => ({ ...s, kind: s.kind === "nap" ? "sleep" : s.kind })),
-                      now: vm.chart.value.now ?? undefined,
-                    },
-                  }
-                : { ...vm.chart, value: null }
-            }
-          />
+          <StressChart variant="full" data={stressSeries(vm.chart)} />
         </SectionShell>
       }
       secondary={[

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { clock, type TimeFormat } from "@/lib/format"
 
 /** Global shell state read by the headers, nav, sync status and ConnectionBanner (spec §4.2, D2). */
 export type ShellStatus = {
@@ -15,6 +16,8 @@ export type ShellStatus = {
   firstDay?: string
   /** IANA zone for clock times in client-rendered charts. */
   timeZone?: string
+  /** 24-hour or 12-hour clock. Missing means 24-hour. */
+  timeFormat?: TimeFormat
   /** Consecutive worn days (Home header streak pill, spec §4.3); null or missing at 0. */
   streak?: { days: number; asOf: string } | null
   /** The avatar photo (src/server/avatar.ts); null draws the outline person icon. */
@@ -28,8 +31,10 @@ export type ShellStatus = {
 const Ctx = React.createContext<ShellStatus | null>(null)
 
 /** The calendar facts most components need: they change once a day, not on every sync. */
-export type ShellCalendar = Pick<ShellStatus, "today" | "firstDay" | "timeZone">
+export type ShellCalendar = Pick<ShellStatus, "today" | "firstDay" | "timeZone" | "timeFormat">
 const CalendarCtx = React.createContext<ShellCalendar | null>(null)
+/** AppLifecycle's resume check (see useShellRecheck). */
+const RecheckCtx = React.createContext<(() => Promise<void>) | null>(null)
 
 /** How often the client asks `/status` while a sync or import runs. */
 export const STATUS_POLL_MS = 2000
@@ -48,7 +53,10 @@ export function ShellStatusProvider({ value, live = false, children }: { value: 
   const router = useRouter()
   const [polled, setPolled] = React.useState<{ from: ShellStatus; status: ShellStatus } | null>(null)
   // A new server render (navigation, refresh) supersedes what polling saw. Avatar, coach and userId only come from the layout.
-  const current = polled?.from === value ? { ...polled.status, avatar: value.avatar, coach: value.coach, userId: value.userId } : value
+  const current = React.useMemo(
+    () => (polled?.from === value ? { ...polled.status, avatar: value.avatar, coach: value.coach, userId: value.userId } : value),
+    [polled, value],
+  )
   // Only the real app polls: a fixture that says "syncing" would poll, refresh and say "syncing" again, forever.
   const running = live && busy(current)
   React.useEffect(() => {
@@ -72,14 +80,32 @@ export function ShellStatusProvider({ value, live = false, children }: { value: 
     }
   }, [running, value, router])
 
-  const { today, firstDay, timeZone } = current
-  const calendar = React.useMemo(() => ({ today, firstDay, timeZone }), [today, firstDay, timeZone])
+  // A resumed app asks the server where things stand (the route also kicks the worker). New scores landed while it
+  // was away, or a new day: re-render the screens. A sync now running: the polling above takes over and refreshes
+  // when it ends. Nothing new: no request beyond this one, and no re-render of every chart.
+  const recheck = React.useCallback(async () => {
+    if (!live) return
+    try {
+      const res = await fetch("/status", { cache: "no-store" })
+      if (!res.ok) return
+      const next = (await res.json()) as ShellStatus
+      setPolled({ from: value, status: next })
+      if (next.sync.lastSuccessAt !== current.sync.lastSuccessAt || next.today !== current.today) router.refresh()
+    } catch {
+      // Offline or signed out: the next resume or navigation tries again.
+    }
+  }, [live, value, current, router])
+
+  const { today, firstDay, timeZone, timeFormat } = current
+  const calendar = React.useMemo(() => ({ today, firstDay, timeZone, timeFormat }), [today, firstDay, timeZone, timeFormat])
   const key = JSON.stringify(current)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content: a new object with the same fields is the same status
   const status = React.useMemo(() => current, [key])
   return (
     <CalendarCtx.Provider value={calendar}>
-      <Ctx.Provider value={status}>{children}</Ctx.Provider>
+      <RecheckCtx.Provider value={recheck}>
+        <Ctx.Provider value={status}>{children}</Ctx.Provider>
+      </RecheckCtx.Provider>
     </CalendarCtx.Provider>
   )
 }
@@ -103,3 +129,16 @@ export function useShellCalendar() {
 
 /** Like useShellCalendar, for kit components that also render outside a shell (tests, gallery). */
 export const useOptionalShellCalendar = () => React.useContext(CalendarCtx)
+
+/** Epoch ms → the signed-in user's clock string. Outside a shell, 24-hour in the runtime zone. */
+export function useClock() {
+  const cal = useOptionalShellCalendar()
+  return React.useCallback((ms: number, timeZone?: string) => clock(ms, timeZone ?? cal?.timeZone, cal?.timeFormat ?? "24"), [cal?.timeZone, cal?.timeFormat])
+}
+
+/** The resume check: one `/status` request, and a refresh only when the server has something new. */
+export function useShellRecheck() {
+  const v = React.useContext(RecheckCtx)
+  if (!v) throw new Error("useShellRecheck must be used inside AppShell")
+  return v
+}

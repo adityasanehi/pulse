@@ -99,16 +99,34 @@ export function dayLabel(date: string, today: string) {
   return formatDay(date, DAY.short);
 }
 
+/** The date pill's label: "Today", "Yesterday", else "Mon., Sep. 28", abbreviations marked with a period as the
+ * reference app prints them ("TUE., APR. 14", home-past-day-activities-top); a month short enough to need none stays bare ("May 4"). */
+export function pillLabel(date: string, today: string) {
+  const label = dayLabel(date, today);
+  if (label === "Today" || label === "Yesterday") return label;
+  const month = formatDay(date, { month: "short" });
+  const dot = month === formatDay(date, { month: "long" }) ? "" : ".";
+  return `${formatDay(date, { weekday: "short" })}., ${month}${dot} ${formatDay(date, { day: "numeric" })}`;
+}
+
 /** "Sep 22 - Sep 28". */
 export const rangeLabel = (from: string, to: string) => `${formatDay(from, DAY.monthDay)} - ${formatDay(to, DAY.monthDay)}`;
 
+/** 24-hour "22:30", or 12-hour "10:30 PM". Display only. */
+export type TimeFormat = "24" | "12";
+
 const clocks = new Map<string, Intl.DateTimeFormat>();
-/** Epoch ms → 24-hour "HH:mm" in `timeZone` (default: the runtime zone). */
-export function clock(ms: number, timeZone?: string) {
-  const key = timeZone ?? "";
+/** Epoch ms → "HH:mm" or "h:mm AM/PM" in `timeZone` (default: the runtime zone). `format` defaults to 24-hour. */
+export function clock(ms: number, timeZone?: string, format: TimeFormat = "24") {
+  const key = `${timeZone ?? ""}\0${format}`;
   let f = clocks.get(key);
   if (!f) {
-    f = new Intl.DateTimeFormat(LOCALE, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+    f = new Intl.DateTimeFormat(LOCALE, {
+      hour: format === "12" ? "numeric" : "2-digit",
+      minute: "2-digit",
+      hourCycle: format === "12" ? "h12" : "h23",
+      timeZone,
+    });
     clocks.set(key, f);
   }
   return f.format(ms);

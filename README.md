@@ -1,75 +1,67 @@
+<div align="center">
+
+<img src="docs/brand/logo-round.svg" alt="" width="88" height="88">
+
 # Pulse
 
-A personal recovery, strain and sleep app for the Fitbit Air: one Next.js app (frontend, sync worker and scoring) on Postgres. The server's admins invite people (or open sign-up); each person connects their own Google account and sees only their own data.
-See `docs/plans/` for the plan.
+**Recovery, strain and sleep from your Google Health data.**
 
-## Screenshots
+Daily scores from what your Fitbit or Pixel Watch syncs to Google Health. Built on Fitbit Air, free for personal use.
 
-<p>
-  <img src="docs/screenshots/phone-home.png" alt="Pulse on a phone: sleep, recovery and strain dials" width="32%">
-  <img src="docs/screenshots/phone-health-monitor.png" alt="Pulse on a phone: the Health Monitor with heart rhythm and measurements" width="32%">
-  <img src="docs/screenshots/phone-journal.png" alt="Pulse on a phone: the Journal with the Log" width="32%">
-</p>
+[![CI](https://github.com/adityaongit/pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/adityaongit/pulse/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE)
+[![Website](https://img.shields.io/badge/site-pulse.portlabs.in-00f19f)](https://pulse.portlabs.in)
 
-Every screen, on a phone and a laptop: [docs/screenshots.md](docs/screenshots.md) (demo mode, seeded data).
+<img src="docs/screenshots/phone-home.png" alt="Pulse on a phone: sleep, recovery and strain dials" width="30%">
+<img src="docs/screenshots/phone-health-monitor.png" alt="Pulse on a phone: the Health Monitor" width="30%">
+<img src="docs/screenshots/phone-journal.png" alt="Pulse on a phone: the Journal" width="30%">
 
-## Run in demo mode
+</div>
 
-Demo mode generates deterministic data for a shared demo user, so no Google account is needed. Start Postgres first: `docker compose -f compose.dev.yaml up -d`.
+## Get Pulse
+
+<div align="center">
+
+<a href="docs/setup.md"><img src="docs/badges/self-host.svg" alt="Self-host on your server" height="56"></a>
+<a href="https://github.com/adityaongit/pulse-mobile/releases/latest"><img src="docs/badges/android.svg" alt="Available on Android" height="56"></a>
+
+**Self-host:** one Docker container with Postgres behind HTTPS, for you and the people you invite. The [setup guide](docs/setup.md)
+walks through Google Cloud, Docker and Tailscale.
+
+**Android:** [Pulse Mobile](https://github.com/adityaongit/pulse-mobile) needs no server or account and scores everything on your
+phone, from Health Connect.
+
+</div>
+
+## What you get
+
+- **Sleep, Recovery and Strain** every morning, with a Strain Target for the day
+- **Pulse Age**, **Stress Monitor** and **Energy Bank** through the day
+- **Health Monitor**, **Journal**, **Trends**, **Reports**, **My Dashboard** and an optional **AI coach** with your own key
+
+Every score is explained on the [metrics pages](https://pulse.portlabs.in/metrics/) and in [docs/algorithms](docs/algorithms).
+More screens: [docs/screenshots.md](docs/screenshots.md).
+
+## Try the demo
+
+No Google account needed: demo mode generates 180 days of data.
 
 ```sh
-pnpm install
-cp .env.example .env   # DATA_SOURCE=demo is already set
-pnpm dev               # http://localhost:3000, health check at /healthz
+git clone https://github.com/adityaongit/pulse.git && cd pulse
+pnpm install && cp .env.example .env
+docker compose -f compose.dev.yaml up -d && pnpm dev    # http://localhost:3000
 ```
 
-The database is created and migrated on boot, and the sync worker starts once (`[worker] started (source: seed)`).
+## Documentation
 
-## Environment
-
-Every variable is listed and explained in [`.env.example`](.env.example). It is validated at startup, and the server exits on invalid config.
-
-- `DATA_SOURCE=google` switches to real data from the Google Health API. It needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `BETTER_AUTH_SECRET`. People sign up with a name, username, email and password (better-auth), sign in with the username or the email, and connect their own Google account from inside Pulse. Sign-up is invite-only by default: set `ADMIN_EMAILS` to your email, create your account, then invite people from the admin dashboard at `/admin` ([admin guide](docs/admin.md#invite-people)).
-- The first sign-in asks for your birth date and sex (onboarding). Settings › Profile edits them.
-
-## Install as an app
-
-Pulse is a PWA: install it from Chrome on Android, Add to Home Screen on iPhone, or wrap it into an Android APK with
-PWABuilder. Notifications, the offline page, launch screens and how to rebrand the icons for a fork are in
-[docs/pwa.md](docs/pwa.md).
-
-## Deploy
-
-Pulse runs as one Docker container with its database in a volume, behind a tunnel or HTTPS reverse proxy. The [setup guide](docs/setup.md) covers Google Cloud, Docker, HTTPS over Tailscale and troubleshooting; [other setups](docs/other-setups.md) covers Cloudflare Tunnel and reverse proxies; the [admin guide](docs/admin.md) covers invites, the coach, updates and backups.
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `pnpm dev` | Dev server |
-| `pnpm build` / `pnpm start` | Production build (standalone output) and server |
-| `pnpm lint` | ESLint |
-| `pnpm typecheck` | Generates Next route types, then `tsc --noEmit` |
-| `pnpm test` / `pnpm test:watch` | Vitest (Node for `*.test.ts`, happy-dom for `*.test.tsx`) |
-| `pnpm e2e` | Playwright |
-| `pnpm db:generate` | Generates a migration in `drizzle/` from `src/server/db/schema.ts` |
-| `pnpm pwa:assets` | Regenerates the app icons, shortcut icons and iOS launch screens ([docs/pwa.md](docs/pwa.md#rebrand-it-for-your-fork)) |
-
-## Contributing and security
-
-- [Setup guide](docs/setup.md): from the demo to your own data on a server.
-- [Installed app (PWA)](docs/pwa.md): install, notifications, offline, rebranding, Android APK.
-- [Contributing](CONTRIBUTING.md): how changes land (`main` is protected; every change is a pull request).
-- [Security policy](SECURITY.md): report vulnerabilities privately.
-- [Code of Conduct](CODE_OF_CONDUCT.md).
+[Setup](docs/setup.md) · [Other setups](docs/other-setups.md) · [Admin](docs/admin.md) · [PWA](docs/pwa.md) ·
+[App shell](docs/mobile.md) · [Technical details](docs/technical-details.md) · [Contributing](CONTRIBUTING.md) ·
+[AGENTS.md](AGENTS.md)
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Use it, change it and share it for any noncommercial purpose. Selling it, or putting it inside a commercial product, is not allowed.
+[PolyForm Noncommercial 1.0.0](LICENSE) · [Security](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
 
-## Credits
-
-- Design inspiration: the interface is inspired by the WHOOP app's look and flow. Pulse is a free, non-commercial community project by an independent developer. It is not affiliated with, endorsed by or competing with WHOOP, Inc., uses no WHOOP device, data, code or assets, and every score is computed from your own Google Health data. WHOOP is a trademark of WHOOP, Inc. If you represent WHOOP or any other company and have a concern, please email work.adityajindal@gmail.com and it will be changed or taken down.
-- [noop](https://github.com/ryanbr/noop): the recovery, strain, sleep and readiness scoring is ported from its analytics engine.
-- [Hælan](https://github.com/bardesss/haelan): its notes on how the Google Health API behaves saved a lot of trial and error.
-
+<sub><b>Credits.</b> Design inspiration: the interface is inspired by the WHOOP app's look and flow. Pulse is a free, non-commercial community project by an independent developer. It is not affiliated with, endorsed by or competing with WHOOP, Inc., uses no WHOOP device, data, code or assets, and every score is computed from your own Google Health data. WHOOP is a trademark of WHOOP, Inc. If you represent WHOOP or any other company and have a concern, please email work.adityajindal@gmail.com and it will be changed or taken down.<br>
+[noop](https://github.com/ryanbr/noop): the recovery, strain, sleep and readiness scoring is ported from its analytics engine.<br>
+[Hælan](https://github.com/bardesss/haelan): its notes on how the Google Health API behaves saved a lot of trial and error.</sub>

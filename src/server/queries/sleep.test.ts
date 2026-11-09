@@ -2,7 +2,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "../db";
 import { mergeSamples } from "../samples";
 import { copyDb, ctxFor, dayAt, seeded, USER } from "../testing";
-import { getSleep } from "./sleep";
+import { eq } from "drizzle-orm";
+import { sleepSessions } from "../db/schema";
+import { getNap, getSleep } from "./sleep";
 
 let db: Db;
 beforeAll(async () => {
@@ -22,7 +24,8 @@ describe("getSleep", () => {
     const need = vm.hoursVsNeed.value!;
     expect(need.calibrating).toBe(false);
     expect(need.needMin).toBeCloseTo(need.parts.baselineMin + need.parts.strainMin + need.parts.debtMin - need.parts.napMin, 6);
-    expect(vm.summary.map((s) => s.label)).toEqual(["Hours vs. needed", "Sleep consistency", "Sleep efficiency", "Restorative sleep"]);
+    expect(vm.summary.map((s) => s.label)).toEqual(["Hours vs. needed", "Sleep consistency", "Sleep efficiency"]);
+    expect(vm.summary.map((s) => s.href)).toEqual(["/trend/hours_need", "/trend/consistency", "/trend/efficiency"]);
     expect(vm.summary.every((s) => s.status)).toBe(true);
     const consistency = vm.summary[1].metric.value!;
     expect(consistency).toBeGreaterThan(50);
@@ -31,10 +34,21 @@ describe("getSleep", () => {
     expect(plans[0].bedtimeAt).toBeLessThan(plans[1].bedtimeAt);
     expect(plans[1].bedtimeAt).toBeLessThan(plans[2].bedtimeAt);
     expect(vm.insight).toMatch(/^Your sleep was (optimal|sufficient|poor)\./);
-    expect(vm.debtTrend.points).toHaveLength(182);
+    // Restorative is deep + REM; efficiency places each spell awake inside the night.
+    const st = vm.stages!.value!;
+    const deep = st.rows.find((r) => r.stage === "deep")!.minutes;
+    const rem = st.rows.find((r) => r.stage === "rem")!.minutes;
+    expect(vm.restorative.value!.minutes).toBe(deep + rem);
+    const eff = vm.efficiency.value!;
+    expect(eff.pct).toBeCloseTo(vm.summary[2].metric.value!, 6);
+    for (const w of eff.wakes) {
+      expect(w.at).toBeGreaterThan(0);
+      expect(w.at + w.width).toBeLessThanOrEqual(1);
+    }
+    expect(vm.sleepStress.value).toBeNull();
   });
 
-  it("consistency draws five nights against the usual times; restorative splits deep and REM; efficiency trends by night", async () => {
+  it("consistency draws five nights against the usual times", async () => {
     const vm = await getSleep(dayAt(150), ctxFor(db));
     const c = vm.consistency.value!;
     expect(c.pct).toBe(vm.summary[1].metric.value);
@@ -46,16 +60,11 @@ describe("getSleep", () => {
     expect(night.typicalWake).not.toBeNull();
     // Each night's optimal times come from the 14 nights before it, so they move from night to night.
     expect(new Set(c.nights.map((n) => n?.typicalBed)).size).toBeGreaterThan(1);
-    const last = vm.restorative.at(-1)!;
-    expect(last.parts!.deep + last.parts!.rem).toBe(last.value);
-    expect(vm.restorative).toHaveLength(30);
-    expect(vm.efficiencyTrend.points.at(-1)!.value).toBeCloseTo(vm.summary[2].metric.value!, 6);
   });
 
-  it("no night: consistency carries the night's reason and restorative has a gap", async () => {
+  it("no night: consistency carries the night's reason", async () => {
     const off = await getSleep(dayAt(156), ctxFor(db));
     expect(off.consistency.value).toBeNull();
-    expect(off.restorative.at(-1)).toMatchObject({ value: null, parts: null });
   });
 
   it("calibrates the need and the planner in the first week", async () => {
@@ -123,5 +132,19 @@ describe("getSleep", () => {
   it("the short-sleep streak builds sleep debt", async () => {
     const debt = async (i: number) => (await getSleep(dayAt(i), ctxFor(db))).details.find((s) => s.key === "debt")!.metric.value!;
     expect(await debt(172)).toBeGreaterThan((await debt(167)) + 60);
+  });
+});
+
+describe("getNap", () => {
+  it("opens a nap on its own and refuses a main sleep or an unknown id", async () => {
+    const [n] = await db.select().from(sleepSessions).where(eq(sleepSessions.isMain, false)).limit(1);
+    const [m] = await db.select().from(sleepSessions).where(eq(sleepSessions.isMain, true)).limit(1);
+    const vm = (await getNap(n.id, ctxFor(db)))!;
+    expect(vm.day).toBe(n.day);
+    expect(vm.hours.value!.asleepMin).toBe(n.asleepMin);
+    expect(vm.stages).toBeNull(); // seed naps are unstaged, like most real ones
+    expect(vm.start).toBeLessThan(vm.end);
+    expect(await getNap(m.id, ctxFor(db))).toBeNull();
+    expect(await getNap("nope", ctxFor(db))).toBeNull();
   });
 });

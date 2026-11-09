@@ -1,6 +1,6 @@
 // The coach's stored state: who may use it (admin panel), each user's provider, key and consent, and their chats.
 // Every per-user read and write filters on user_id. The API key is encrypted (crypto.ts) and never leaves the server.
-import { and, desc, eq, lt, or } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { LanguageModel, UIMessage } from "ai";
 import { isOwnerEmail } from "../admin";
 import { getConfig } from "../config";
@@ -45,6 +45,13 @@ export async function setCoachAllowed(db: Db, userId: number, allowed: boolean):
 
 /** What the browser may know about the user's setup: never the key itself. */
 export type CoachSetup = { provider: string | null; model: string | null; last4: string | null; consent: boolean; instructions: string | null; briefMinute: number | null };
+
+/** Access, consent and a provider: the coach can answer without a set-up step. */
+export async function coachReady(db: Db, userId: number): Promise<boolean> {
+  if (!(await coachAccess(db, userId))) return false;
+  const s = await coachSetup(db, userId);
+  return s.consent && s.provider !== null;
+}
 
 export async function coachSetup(db: Db, userId: number): Promise<CoachSetup> {
   const [r] = await db.select().from(coachSettings).where(eq(coachSettings.userId, userId));
@@ -175,6 +182,19 @@ export async function saveChat(db: Db, userId: number, id: string, messages: UIM
     .values({ userId, id, title: titleOf(messages), messages, createdAt: at, updatedAt: at })
     // The title follows the first question, so editing it renames the chat.
     .onConflictDoUpdate({ target: [coachChats.userId, coachChats.id], set: { title: titleOf(messages), messages, updatedAt: at } });
+}
+
+/**
+ * Replaces the chat only if it still holds `before`, so one answer to a confirmation is applied once: of two requests
+ * carrying the same answer, the second finds the chat already changed and gets false.
+ */
+export async function claimChat(db: Db, userId: number, id: string, before: UIMessage[], after: UIMessage[]): Promise<boolean> {
+  const rows = await db
+    .update(coachChats)
+    .set({ messages: after, updatedAt: now() })
+    .where(and(eq(coachChats.userId, userId), eq(coachChats.id, id), sql`${coachChats.messages} = ${JSON.stringify(before)}::jsonb`))
+    .returning({ id: coachChats.id });
+  return rows.length === 1;
 }
 
 export async function deleteChat(db: Db, userId: number, id: string): Promise<void> {

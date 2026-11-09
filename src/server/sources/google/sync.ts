@@ -16,6 +16,8 @@ import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { getConfig } from "../../config";
 import { type Db, getDb, row } from "../../db";
 import { dailyMetrics, dailyValues, exercises, healthRecords, hrDays, intradayDirty, oauthTokens, sleepSegments, sleepSessions, stepsDays, syncState } from "../../db/schema";
+import { LOG_DAYS } from "@/lib/log";
+import { importEntries, pruneEntries } from "../../log";
 import { getProfile } from "../../profile";
 import { mergeSamples } from "../../samples";
 import type { Source } from "../types";
@@ -32,10 +34,12 @@ import {
   mapExtra,
   mapHeartRate,
   mapHeight,
+  mapLogEntries,
   mapRecords,
   mapRollup,
   mapSleep,
   mapStepsMinutes,
+  type ReadableLogType,
   type RollupType,
   type SegmentRow,
 } from "./map";
@@ -73,6 +77,11 @@ export const EXTRA_JOBS: Job[] = [
   { key: "height", kind: "height", type: "height" },
 ];
 export const EXTRA_JOB_KEYS = new Set(EXTRA_JOBS.map((j) => j.key));
+
+/** The sync_state row for Journal › Log's import of entries logged in other apps. */
+export const LOG_IMPORT_KEY = "logged-entries";
+/** The types Google lets Pulse list back, in the order they are imported. */
+const LOG_IMPORT_TYPES: ReadableLogType[] = ["hydration-log", "nutrition-log", "weight", "body-fat"];
 
 /** Cheap types first, so a first connect shows daily data long before heart rate (~1,300 requests) is done. */
 const JOBS: Job[] = [
@@ -133,8 +142,37 @@ export function createGoogleSource(deps: SyncDeps): Source {
           log.error(err instanceof GoogleError ? safe : `[sync] ${job.key} failed: ${(err as Error)?.stack ?? err}`);
         }
       }
+      await importLog();
       await pruneRawPayloads(db, userId, nowS()); // every run, so the archive stays bounded (client.ts)
       return { changed: run.changed };
+
+      /**
+       * Every run re-reads Journal › Log's window for each readable type, so an entry logged, edited or deleted in
+       * another app (or Pulse's own, once Google has it) lands in logged_entries. Feeds no score: never sets `changed`.
+       * Each type fails on its own; the first error is kept in the row.
+       */
+      async function importLog() {
+        const t = nowS();
+        const today = localDay(t, tz);
+        // Through the end of today: another app can log a meal ahead of its time.
+        const [from, to] = [localMidnight(addDays(today, 1 - LOG_DAYS), tz), localMidnight(addDays(today, 1), tz)];
+        let error: string | null = null;
+        await setState(db, LOG_IMPORT_KEY, { lastAttemptAt: t });
+        for (const type of LOG_IMPORT_TYPES) {
+          try {
+            const points = await client.list(type, from, to);
+            const { missing } = await db.transaction((tx) => importEntries(tx, userId, type, mapLogEntries(type, points, tz), { from, to, now: t }));
+            // Read-backs outside the transaction: a slow Google never holds a database connection.
+            const pruned = await pruneEntries(db, userId, missing, (name) => client.exists(type, name));
+            if (pruned.error) throw pruned.error;
+          } catch (err) {
+            const safe = err instanceof GoogleError ? err.message : `[sync] ${LOG_IMPORT_KEY} ${type}: internal error`;
+            error ??= safe;
+            log.error(err instanceof GoogleError ? safe : `[sync] ${LOG_IMPORT_KEY} ${type} failed: ${(err as Error)?.stack ?? err}`);
+          }
+        }
+        await setState(db, LOG_IMPORT_KEY, error ? { lastError: error } : { lastSuccessAt: nowS(), lastError: null });
+      }
 
       async function syncJob(job: Job) {
         const [st] = await db.select().from(syncState).where(and(eq(syncState.userId, userId), eq(syncState.type, job.key)));
@@ -282,8 +320,12 @@ function writer(tz: string, userId: number) {
     return days.get(q) ?? days.set(q, localDay(q * 900, tz)).get(q)!;
   };
 
-  const dailyRows = async (db: Db, rows: DailyRow[]) =>
-    (await upsert(db, dailyMetrics, ["day"], userId, rows.map((r) => ({ ...r, source: "google" })))).length > 0;
+  /** Upserts nightly and daily rows; a changed day is marked dirty (stage 2 replays from the first dirty day). */
+  const dailyRows = async (db: Db, rows: DailyRow[], dirty: Set<string>) => {
+    const written = await upsert(db, dailyMetrics, ["day"], userId, rows.map((r) => ({ ...r, source: "google" })));
+    for (const r of written) dirty.add(r.day as string);
+    return written.length > 0;
+  };
 
   /** Replaces each session's segments where they differ. Returns the sessions whose segments changed. */
   async function segments(db: Db, sessionIds: string[], next: SegmentRow[]): Promise<Set<string>> {
@@ -325,10 +367,10 @@ function writer(tz: string, userId: number) {
     let changed = false;
     switch (job.kind) {
       case "daily":
-        changed = await dailyRows(db, mapDaily(job.type, points, tz));
+        changed = await dailyRows(db, mapDaily(job.type, points, tz), dirty);
         break;
       case "rollup":
-        changed = await dailyRows(db, mapRollup(job.type, points));
+        changed = await dailyRows(db, mapRollup(job.type, points), dirty);
         break;
       // Extras and records feed no score, so they never set `changed` (no recompute for them).
       case "extra":

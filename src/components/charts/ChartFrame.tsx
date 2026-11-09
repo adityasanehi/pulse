@@ -25,7 +25,8 @@ export function ChartFigure({
   children: React.ComponentProps<typeof ChartContainer>["children"]
 }) {
   return (
-    <figure className={cn("min-w-0", grow && "flex flex-1 flex-col")}>
+    // Axis and value labels in tabular figures, so ticks of equal width line up ("0:00", "06:36").
+    <figure className={cn("min-w-0 tabular-nums", grow && "flex flex-1 flex-col")}>
       <figcaption className="sr-only">{summary}</figcaption>
       {/* Recharts' keyboard layer makes the plot (its <svg>) a tab stop; arrows scrub the tooltip. The default outline
           box is off: it showed on click (user report, 2026-10-03). The focus ring is the app's, on :focus-visible only,
@@ -54,6 +55,8 @@ export function useSeriesAnimation() {
 /** Dashed, faint horizontal lines (WHOOP and Bevel both dash theirs). */
 export const GRID = { vertical: false, stroke: "var(--chart-grid)", strokeDasharray: "3 4" } as const
 export const AXIS = { tickLine: false, axisLine: false, tickMargin: 8 } as const
+/** A card-coloured outline under a point label, so a line crossing it never strikes through the digits. */
+export const LABEL_HALO = { stroke: "var(--card)", strokeWidth: 4, strokeLinejoin: "round", paintOrder: "stroke" } as const
 /** Characters to px at 11 px bold, for pills and gutters. */
 const textWidth = (t: string) => Math.ceil(t.length * 6.6)
 

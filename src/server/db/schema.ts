@@ -162,6 +162,8 @@ export const rawPayloads = pgTable(
 /**
  * Band heart rate, one row per user and UTC day (`bucket` = floor(ts / 86400)): second-of-day offsets and bpm, sorted
  * by offset. UTC buckets, so a time-zone change never re-buckets stored samples. Read and merged by src/server/samples.ts.
+ * `minute`: the day was compacted to one mean per minute (compactHr); a raw Fitbit day is about 37,000 samples and
+ * 160 KB, a compacted one at most 1,440 and about 8 KB.
  */
 export const hrDays = pgTable(
   "hr_days",
@@ -170,6 +172,7 @@ export const hrDays = pgTable(
     bucket: integer("bucket").notNull(),
     offsets: integer("offsets").array().notNull(),
     values: smallint("values").array().notNull(),
+    minute: boolean("minute").notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.userId, t.bucket] })],
 );
@@ -338,8 +341,21 @@ export const journalEntries = pgTable(
     day: day("day").notNull(),
     tag: text("tag").notNull(),
     value: integer("value").notNull(),
+    /** The follow-up answer for a "yes" (src/lib/behaviors.ts): minutes after midnight or a count. Null when not asked or skipped. */
+    detail: integer("detail"),
   },
   (t) => [primaryKey({ columns: [t.userId, t.day, t.tag] })],
+);
+
+/** The journal's free-text note for a day (journal-daily-questions-notes). No row means no note. */
+export const journalNotes = pgTable(
+  "journal_notes",
+  {
+    userId: userId(),
+    day: day("day").notNull(),
+    text: text("text").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day] })],
 );
 
 /** Days whose HR or steps changed; stage 1 of the pipeline recomputes them, then clears the row. */
@@ -378,6 +394,20 @@ export const dailyScores = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.day] })],
 );
+
+/**
+ * Stage 2's fold state after `day` (src/server/pipeline/stage2.ts): one row per user, so a run replays only the days
+ * after it instead of the whole history. Dropped by the version, profile or first-day checks when it no longer applies.
+ */
+export const foldCheckpoints = pgTable("fold_checkpoints", {
+  userId: userId().primaryKey(),
+  day: day("day").notNull(),
+  scoringVersion: integer("scoring_version").notNull(),
+  /** The scoring options the fold saw (time zone, birth date, sex, height, max HR) and the history's first day. */
+  inputsKey: text("inputs_key").notNull(),
+  /** JSON text, not jsonb: jsonb reorders object keys, and journal impact's memo key hashes the fold's objects as written. */
+  fold: text("fold").notNull(),
+});
 
 /** Per-minute series per day; `kind` e.g. "hr", "stress", "energy_bank", "load". */
 export const intradaySeries = pgTable(
@@ -434,6 +464,8 @@ export const profile = pgTable("profile", {
   heightCm: real("height_cm"),
   /** IANA zone the person lives in: their days start at local midnight there. Chosen at onboarding. */
   timeZone: text("time_zone").notNull(),
+  /** How clock times are shown. Display only: a change does not recompute scores. */
+  timeFormat: text("time_format", { enum: ["24", "12"] }).notNull().default("24"),
   updatedAt: ts("updated_at").notNull(),
 });
 
@@ -446,8 +478,9 @@ export const avatars = pgTable("avatars", {
 });
 
 /**
- * What the user logged in Pulse (water, food, weight, mood, symptoms, cycle), one row per Google data point.
- * `google_name` is the data point's name at Google (null: kept locally only, as in demo mode).
+ * What the user logged in Pulse (water, food, weight, mood, symptoms, cycle), plus the water, food, weight and body fat
+ * logged in other apps, one row per Google data point. `google_name` is the data point's name at Google (null: kept
+ * locally only, as in demo mode).
  */
 export const loggedEntries = pgTable(
   "logged_entries",
@@ -459,6 +492,10 @@ export const loggedEntries = pgTable(
     day: day("day").notNull(),
     data: jsonb("data").notNull(),
     googleName: text("google_name"),
+    /** `pulse`: logged in Pulse. `google`: logged in another app and brought home by the sync. */
+    source: text("source").notNull().default("pulse"),
+    /** Google's `dataSource.platform` for an entry from another app (`FITBIT`, `HEALTH_CONNECT`, ...); null for Pulse's own. */
+    app: text("app"),
     createdAt: ts("created_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.id] }), index("logged_entries_ts").on(t.userId, t.ts), index("logged_entries_day_type").on(t.userId, t.day, t.type)],
@@ -532,6 +569,6 @@ export const pushSubscriptions = pgTable(
 /** Tables holding a user's synced Google data and what was computed from it (cleared on a Google account switch). */
 export const SYNCED_TABLES = [
   syncState, rawPayloads, hrDays, stepsDays, dailyMetrics, sleepSegments, sleepSessions, exercises, dailyValues,
-  healthRecords, intradayDirty, dailyScores, intradaySeries, reports,
+  healthRecords, intradayDirty, dailyScores, intradaySeries, reports, foldCheckpoints,
 ] as const;
 

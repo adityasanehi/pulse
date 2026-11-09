@@ -4,14 +4,14 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { CloudDownload, Plug, TriangleAlert, Unplug, UserX, Watch, WifiOff } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { ago, clock } from "@/lib/format"
+import { ago } from "@/lib/format"
 import { useNow } from "@/hooks/use-now"
 import { useOnline } from "@/hooks/use-online"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { CARD_MATERIAL } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { useShellStatus } from "@/components/shells/ShellStatus"
+import { useClock, useShellStatus } from "@/components/shells/ShellStatus"
 
 /**
  * The one place the app talks about its data connection (spec §5.13). Reads ShellStatus; hidden when
@@ -20,6 +20,7 @@ import { useShellStatus } from "@/components/shells/ShellStatus"
  */
 export function ConnectionBanner({ className }: { className?: string }) {
   const s = useShellStatus()
+  const formatClock = useClock()
   const router = useRouter()
   const now = useNow()
   const pathname = usePathname()
@@ -45,7 +46,7 @@ export function ConnectionBanner({ className }: { className?: string }) {
       role: "status",
     },
     not_linked: {
-      icon: <UserX className="text-warning" />,
+      icon: <UserX className="text-warning-text" />,
       title: "No Google Health on this account",
       body: "This Google account has no Google Health profile, so there is nothing to sync. Settings has the fix.",
       action: (
@@ -56,7 +57,7 @@ export function ConnectionBanner({ className }: { className?: string }) {
       role: "alert",
     },
     no_device: {
-      icon: <Watch className="text-warning" />,
+      icon: <Watch className="text-warning-text" />,
       title: "No Fitbit device on this account",
       body: "This Google account has Google Health but no Fitbit device. Pair your Fitbit Air in the Google Health app, or sign in with the account it uses.",
       action: (
@@ -67,7 +68,7 @@ export function ConnectionBanner({ className }: { className?: string }) {
       role: "alert",
     },
     importing: {
-      icon: <CloudDownload className="text-coach" />,
+      icon: <CloudDownload className="text-coach-text" />,
       title: "Importing history…",
       body: `${done} of ${total}\u00a0days. Scores fill in as days arrive.`,
       action: null,
@@ -81,13 +82,13 @@ export function ConnectionBanner({ className }: { className?: string }) {
       role: "alert",
     },
     stale: {
-      icon: <TriangleAlert className="text-warning" />,
+      icon: <TriangleAlert className="text-warning-text" />,
       title: "Sync is behind",
       body: !s.sync.lastSuccessAt
         ? "Sync is behind. Data may be out of date."
         : now
           ? `Last successful sync ${ago(s.sync.lastSuccessAt, now)}. Data may be out of date.`
-          : `Last successful sync at ${clock(s.sync.lastSuccessAt, s.timeZone)}. Data may be out of date.`,
+          : `Last successful sync at ${formatClock(s.sync.lastSuccessAt, s.timeZone)}. Data may be out of date.`,
       action: (
         <Button size="touch" variant="secondary" onClick={() => router.refresh()}>
           Retry
@@ -98,7 +99,7 @@ export function ConnectionBanner({ className }: { className?: string }) {
     offline: {
       icon: <WifiOff className="text-foreground-secondary" />,
       title: "You’re offline",
-      body: `${s.sync.lastSuccessAt ? `Last synced ${now ? ago(s.sync.lastSuccessAt, now) : `at ${clock(s.sync.lastSuccessAt, s.timeZone)}`}. ` : ""}This is what the device last loaded. Check-in answers are kept and sent when you’re back.`,
+      body: `${s.sync.lastSuccessAt ? `Last synced ${now ? ago(s.sync.lastSuccessAt, now) : `at ${formatClock(s.sync.lastSuccessAt, s.timeZone)}`}. ` : ""}This is what the device last loaded. Check-in answers are kept and sent when you’re back.`,
       action: null,
       role: "status",
     },
@@ -110,7 +111,7 @@ export function ConnectionBanner({ className }: { className?: string }) {
       aria-live={view.role === "status" ? "polite" : undefined}
       className={cn(
         CARD_MATERIAL,
-        "grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 border-0 px-4 py-3 *:[svg]:size-5 *:[svg]:translate-y-px *:[svg]:stroke-[1.75] md:grid-cols-[auto_minmax(0,1fr)_auto]",
+        "grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 border-0 px-4 py-3 *:[svg]:size-5! *:[svg]:translate-y-px *:[svg]:stroke-[1.75] md:grid-cols-[auto_minmax(0,1fr)_auto]",
         className
       )}
     >

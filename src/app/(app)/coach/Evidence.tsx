@@ -1,3 +1,5 @@
+"use client"
+
 import Link from "next/link"
 import type { ReactNode } from "react"
 import { ArrowUpRight } from "lucide-react"
@@ -10,13 +12,14 @@ import { CARD_MATERIAL } from "@/components/ui/card"
 import type { Metric } from "@/lib/reasons"
 import { normalizeReason } from "@/lib/reasons"
 import { cn } from "@/lib/utils"
+import { useClock } from "@/components/shells/ShellStatus"
 
 function metric(m: { value: number | null; reason?: string | null; provisional?: boolean }): Metric<number> {
   return { ...m, reason: m.value === null ? normalizeReason(m.reason) : null, provisional: m.provisional ?? false }
 }
 
 function BasedOn({ href, children }: { href: string; children: ReactNode }) {
-  return <Link href={href} className="inline-flex items-center gap-1.5 text-[12px] leading-4 text-coach hover:underline underline-offset-4">Based on {children}<ArrowUpRight aria-hidden className="size-3.5" /></Link>
+  return <Link href={href} className="inline-flex items-center gap-1.5 text-[12px] leading-4 text-coach-text hover:underline underline-offset-4">Based on {children}<ArrowUpRight aria-hidden className="size-3.5" /></Link>
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
@@ -24,6 +27,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export function Evidence({ name, output }: { name: string; output: unknown }) {
+  const formatClock = useClock()
   if (!output || typeof output !== "object") return null
   if (name === "get_day") {
     const d = output as CoachOutputs["get_day"]
@@ -40,7 +44,7 @@ export function Evidence({ name, output }: { name: string; output: unknown }) {
   if (name === "get_sleep") {
     const d = output as CoachOutputs["get_sleep"]
     const debt = d.details.find((v) => v.key === "debt")
-    const time = (ms: number) => new Intl.DateTimeFormat("en", { timeZone: d.timeZone, hour: "numeric", minute: "2-digit" }).format(ms)
+    const time = (ms: number) => formatClock(ms, d.timeZone)
     return <div className="space-y-2"><Card title={`Sleep · ${d.day}`}>
       <KeyStatRow variant="row" label="Time asleep" metric={metric(d.asleepMinutes)} unit="min" format="int" direction="none" />
       {d.summary.filter((v) => v.key === "efficiency" || v.key === "consistency").map((v) => <KeyStatRow key={v.key} variant="row" label={v.label} metric={metric(v)} unit={v.unit ?? undefined} format="int" average={v.baseline} direction="up" />)}
